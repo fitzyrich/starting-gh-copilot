@@ -4,6 +4,48 @@ document.addEventListener("DOMContentLoaded", () => {
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
 
+  function createParticipantItem(activityName, email) {
+    const participant = document.createElement("li");
+
+    const participantEmail = document.createElement("span");
+    participantEmail.textContent = email;
+    participant.appendChild(participantEmail);
+
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "participant-delete";
+    deleteButton.type = "button";
+    deleteButton.textContent = "\u00d7";
+    deleteButton.title = `Unregister ${email}`;
+    deleteButton.setAttribute("aria-label", `Unregister ${email} from ${activityName}`);
+    deleteButton.addEventListener("click", async () => {
+      try {
+        const response = await fetch(
+          `/activities/${encodeURIComponent(activityName)}/unregister?email=${encodeURIComponent(email)}`,
+          { method: "DELETE" }
+        );
+        const result = await response.json();
+
+        messageDiv.textContent = response.ok
+          ? result.message
+          : result.detail || "An error occurred";
+        messageDiv.className = response.ok ? "success" : "error";
+        messageDiv.classList.remove("hidden");
+
+        if (response.ok) {
+          await fetchActivities();
+        }
+      } catch (error) {
+        messageDiv.textContent = "Failed to unregister participant. Please try again.";
+        messageDiv.className = "error";
+        messageDiv.classList.remove("hidden");
+        console.error("Error unregistering participant:", error);
+      }
+    });
+    participant.appendChild(deleteButton);
+
+    return participant;
+  }
+
   // Function to fetch activities from API
   async function fetchActivities() {
     try {
@@ -12,11 +54,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
         const activityCard = document.createElement("div");
         activityCard.className = "activity-card";
+        activityCard.dataset.activityName = name;
 
         const spotsLeft = details.max_participants - details.participants.length;
 
@@ -24,8 +68,22 @@ document.addEventListener("DOMContentLoaded", () => {
           <h4>${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
-          <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          <p class="activity-availability"><strong>Availability:</strong> ${spotsLeft} spots left</p>
         `;
+
+        const participantsSection = document.createElement("div");
+        participantsSection.className = "participants-section";
+
+        const participantsHeading = document.createElement("h5");
+        participantsHeading.textContent = `Participants (${details.participants.length})`;
+        participantsSection.appendChild(participantsHeading);
+
+        const participantsList = document.createElement("ul");
+        details.participants.forEach((email) => {
+          participantsList.appendChild(createParticipantItem(name, email));
+        });
+        participantsSection.appendChild(participantsList);
+        activityCard.appendChild(participantsSection);
 
         activitiesList.appendChild(activityCard);
 
@@ -62,6 +120,20 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+
+        const activityCard = Array.from(document.querySelectorAll(".activity-card"))
+          .find((card) => card.dataset.activityName === activity);
+        if (activityCard) {
+          const participantsList = activityCard.querySelector(".participants-section ul");
+          const participantsHeading = activityCard.querySelector(".participants-section h5");
+          const availability = activityCard.querySelector(".activity-availability");
+          const participantCount = result.activity.participants.length;
+          const spotsLeft = result.activity.max_participants - participantCount;
+
+          participantsList.appendChild(createParticipantItem(activity, email));
+          participantsHeading.textContent = `Participants (${participantCount})`;
+          availability.innerHTML = `<strong>Availability:</strong> ${spotsLeft} spots left`;
+        }
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
